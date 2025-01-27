@@ -1,58 +1,108 @@
 import pandas as pd
 
-def calcular_precio_minimo_con_tercera_fuente(archivo_excel, cantidad_proveedores, nivel, distribuccion_por_pais, margen_opcional=None):
+def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccion_por_nivel, distribuccion_por_region=None, margen_opcional=None, check_names_por_nivel=None):
     """
     Función para calcular el precio mínimo considerando:
     - Coste de operaciones: Depende del nivel y la cantidad total de proveedores.
-    - Coste de tercera fuente: Aplica solo si el modelo incluye enriquecimiento y depende del país y la cantidad de proveedores.
-    
+    - Coste de tercera fuente: Aplica solo si el modelo incluye enriquecimiento y depende de la región y la cantidad de proveedores.
+    - Coste de Compliance: Aplica si los Check Names relevantes están presentes por nivel.
+
     Parámetros:
-    - archivo_excel: Ruta del archivo Excel con los servicios contratados.
     - cantidad_proveedores: Cantidad total de proveedores.
-    - nivel: Nivel del cliente (360, 180, basic, Elementary, Digital).
-    - distribuccion_por_pais: Diccionario con la distribución de cantidad de proveedores por país (ej. {'ESP': 50, 'PRT': 30}).
-    - margen_opcional: Margen deseado opcional (ej. 0.2 para 20%).
-    
+    - distribuccion_por_nivel: Diccionario con la distribución de cantidad de proveedores por nivel.
+    - distribuccion_por_region: Diccionario con la distribución de cantidad de proveedores por región.
+    - margen_opcional: Margen deseado opcional.
+    - check_names_por_nivel: Diccionario con los Check Names detectados para cada nivel.
+
     Retorna:
-    - Un diccionario con el coste total, el precio mínimo sugerido y el precio mínimo por proveedor.
+    - Un diccionario con el coste total y desgloses por nivel.
     """
     # Reglas de negocio: Coste por proveedor según el nivel
     coste_por_proveedor_nivel = {
         '360': 25.97,
         '180': 11.41,
-        'basic': 2.32,
+        'Basic': 2.32,
         'Elementary': 0.54,
-        'Digital': 0.27
+        'Digital': 0.27,
     }
 
-    # Leer el archivo Excel para identificar el modelo
-    servicios_df = pd.read_excel(archivo_excel)
-    modelos_enriquecidos = ['Modelo Reducido Enriquecido (Con documento)', 'Modelo Reducido Enriquecido (Con Documento)']
-    modelo_enriquecido = servicios_df['Check Name'].isin(modelos_enriquecidos).any()
+    # Costes por región
+    coste_por_region = {
+        'Europa': 35.26,
+        'Africa': 46.9,
+        'LATAM': 51.64,
+        'Asia': 69.99,
+        'Oceania': 46,
+        'Norte America': 30,
+        'Centro America': 60.75,
+        'Oriente Medio': 59.95,
+        'ROW': 32.43,
+        'Tarifa Plana': 0  # Tarifa plana siempre tiene coste 0
+    }
 
-    # Cargar el coste de tercera fuente desde un DataFrame o archivo CSV externo
-    coste_tercera_fuente_df = pd.read_excel(r"C:\Users\Pia\OneDrive - GoSupply Advanced Applications SL\Escritorio\Automatización de procesos\Calculadora\COSTE_3_fuente.xlsx")
-    
-    # Calcular el número restante de proveedores y asignarlo a "RoW" si no se alcanza la cantidad total
-    total_asignado = sum(distribuccion_por_pais.values())
-    proveedores_por_pais = distribuccion_por_pais.copy()
-    if total_asignado < cantidad_proveedores:
-        proveedores_por_pais['RoW'] = cantidad_proveedores - total_asignado
+    # Check Names que habilitan la Fuente Compliance
+    check_names_fuente_compliance = {
+        "Onlycompany",
+        "Onlycompany + Politicas",
+        "Stakeholders",
+        "Stakeholders + Politicas",
+        "Stakeholders + Peps y Sips",
+        "Stakeholders + Politicas + Peps y Sips"
+    }
 
-    # Calcular el coste de tercera fuente solo si el modelo es enriquecido
+    # Check Names que habilitan el enriquecimiento
+    check_names_enriquecimiento = {
+        "Modelo Completo Enriquecido (Con Documento)",
+        "Modelo Reducido Enriquecido (Con Documento)"
+    }
+
+    # Inicializar resultados desagregados
+    resultados_por_nivel = {}
+
+    # Calcular los costes por nivel
+    coste_operaciones = 0
     coste_tercera_fuente = 0
-    if modelo_enriquecido:
-        for pais, cantidad in proveedores_por_pais.items():
-            coste_por_proveedor = coste_tercera_fuente_df.loc[coste_tercera_fuente_df['Country'] == pais, 'Coste por Proveedor (€)'].values
-            if len(coste_por_proveedor) > 0:
-                coste_tercera_fuente += coste_por_proveedor[0] * cantidad
-    
-    # Calcular el coste de operaciones
-    coste_operaciones = coste_por_proveedor_nivel.get(str(nivel), 0) * cantidad_proveedores
+    coste_compliance = 0
+
+    for nivel, cantidad in distribuccion_por_nivel.items():
+        if cantidad > 0:  # Solo procesar niveles con proveedores
+            # Coste de operaciones para el nivel actual
+            coste_nivel_operaciones = coste_por_proveedor_nivel.get(nivel, 0) * cantidad
+            coste_operaciones += coste_nivel_operaciones
+
+            # Determinar si el nivel tiene enriquecimiento
+            tiene_enriquecimiento = (
+                check_names_por_nivel 
+                and nivel in check_names_por_nivel 
+                and any(check_name in check_names_enriquecimiento for check_name in check_names_por_nivel[nivel])
+            )
+
+            # Coste de tercera fuente para el nivel actual
+            coste_nivel_tercera_fuente = 0
+            if distribuccion_por_region and tiene_enriquecimiento:
+                for region, proporcion in distribuccion_por_region.items():
+                    coste_por_proveedor = coste_por_region.get(region, 0)
+                    coste_nivel_tercera_fuente += coste_por_proveedor * (cantidad * (proporcion / 100))
+            coste_tercera_fuente += coste_nivel_tercera_fuente
+
+            # Coste de Compliance para el nivel actual
+            coste_nivel_compliance = 0
+            if check_names_por_nivel and nivel in check_names_por_nivel:
+                if any(check_name in check_names_fuente_compliance for check_name in check_names_por_nivel[nivel]):
+                    coste_nivel_compliance = cantidad * 5  # Coste fijo de 5 euros por proveedor
+            coste_compliance += coste_nivel_compliance
+
+            # Guardar resultados desagregados por nivel
+            resultados_por_nivel[nivel] = {
+                'Coste de Operaciones': round(coste_nivel_operaciones, 2),
+                'Coste de Tercera Fuente': round(coste_nivel_tercera_fuente, 2),
+                'Coste de Compliance': round(coste_nivel_compliance, 2),
+                'Coste Total': round(coste_nivel_operaciones + coste_nivel_tercera_fuente + coste_nivel_compliance, 2)
+            }
 
     # Calcular el coste total
-    coste_total = coste_operaciones + coste_tercera_fuente
-    
+    coste_total = coste_operaciones + coste_tercera_fuente + coste_compliance
+
     # Si se proporciona un margen, calcular el precio mínimo con margen
     if margen_opcional is not None:
         precio_minimo = coste_total * (1 + margen_opcional)
@@ -61,50 +111,21 @@ def calcular_precio_minimo_con_tercera_fuente(archivo_excel, cantidad_proveedore
 
     # Calcular el precio mínimo por proveedor
     precio_minimo_por_proveedor = precio_minimo / cantidad_proveedores if cantidad_proveedores > 0 else 0
-    
+
+    # Depuración
+    print("Check Names por nivel:", check_names_por_nivel)
+    print("Depuración de resultados por nivel:", resultados_por_nivel)
+
     # Retornar el resultado
     return {
-        'Coste de Operaciones': round(coste_operaciones, 2),
-        'Coste de Tercera Fuente': round(coste_tercera_fuente, 2),
-        'Coste total': round(coste_total, 2),
+        'Resultados por Nivel': resultados_por_nivel,
+        'Coste de Operaciones Total': round(coste_operaciones, 2),
+        'Coste de Tercera Fuente Financiera Total': round(coste_tercera_fuente, 2),
+        'Coste de Compliance Total': round(coste_compliance, 2),
+        'Coste Total': round(coste_total, 2),
         'Precio mínimo sugerido por proyecto': round(precio_minimo, 2),
         'Precio mínimo por proveedor': round(precio_minimo_por_proveedor, 2)
     }
 
-# Chatbot interactivo
-if __name__ == "__main__":
-    print("Bienvenido al chatbot de cálculo de precio mínimo")
-    archivo_excel = input("Por favor, ingrese la ruta del archivo Excel con los servicios contratados: ")
-    cantidad_proveedores = int(input("Ingrese la cantidad total de proveedores: "))
-    nivel = input("Ingrese el nivel del cliente (360, 180, basic, Elementary, Digital): ")
-    num_paises = int(input("¿Cuántos países quiere ingresar para la distribución de proveedores?: "))
-    distribuccion_por_pais = {}
-    for _ in range(num_paises):
-        pais = input("Ingrese el código del país (ej. ESP, PRT): ")
-        while True:
-            cantidad = input(f"Ingrese la cantidad de proveedores para {pais}: ")
-            if cantidad.isdigit():
-                cantidad = int(cantidad)
-                break
-            else:
-                print("Por favor, ingrese un número válido.")
-        distribuccion_por_pais[pais] = cantidad
 
-    total_asignado = sum(distribuccion_por_pais.values())
-    if total_asignado < cantidad_proveedores:
-        distribuccion_por_pais['RoW'] = cantidad_proveedores - total_asignado
-
-    margen_opcional = input("Ingrese el margen deseado (opcional, presione Enter para omitir): ")
-    margen_opcional = float(margen_opcional) if margen_opcional else None
-
-    resultado = calcular_precio_minimo_con_tercera_fuente(
-        archivo_excel=archivo_excel,
-        cantidad_proveedores=cantidad_proveedores,
-        nivel=nivel,
-        distribuccion_por_pais=distribuccion_por_pais,
-        margen_opcional=margen_opcional
-    )
-
-    print("\nResultado del cálculo:")
-    for clave, valor in resultado.items():
-        print(f"{clave}: {valor}")
+ 
