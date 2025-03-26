@@ -80,17 +80,25 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
             # Coste de tercera fuente para el nivel actual
             coste_nivel_tercera_fuente = 0
             if distribuccion_por_region and tiene_enriquecimiento:
+                suma_porcentajes = sum(distribuccion_por_region.values())
+                if suma_porcentajes > 100:
+                    raise ValueError(f"La suma de los porcentajes por región es {suma_porcentajes}%, lo cual excede el 100%. Corrige la distribución.")
                 for region, proporcion in distribuccion_por_region.items():
                     coste_por_proveedor = coste_por_region.get(region, 0)
                     coste_nivel_tercera_fuente += coste_por_proveedor * (cantidad * (proporcion / 100))
             coste_tercera_fuente += coste_nivel_tercera_fuente
 
+
             # Coste de Compliance para el nivel actual
             coste_nivel_compliance = 0
             if check_names_por_nivel and nivel in check_names_por_nivel:
                 if any(check_name in check_names_fuente_compliance for check_name in check_names_por_nivel[nivel]):
-                    coste_nivel_compliance = cantidad * 5  # Coste fijo de 5 euros por proveedor
+                    coste_nivel_compliance = cantidad * 5
+                    if coste_nivel_compliance < 5000:
+                        coste_nivel_compliance = 5000  # Aplicar mínimo
             coste_compliance += coste_nivel_compliance
+
+
 
             # Guardar resultados desagregados por nivel
             resultados_por_nivel[nivel] = {
@@ -112,6 +120,18 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
     # Calcular el precio mínimo por proveedor
     precio_minimo_por_proveedor = precio_minimo / cantidad_proveedores if cantidad_proveedores > 0 else 0
 
+    
+    # Calcular el precio mínimo por nivel (precio total por nivel dividido por cantidad de proveedores del nivel)
+    precio_minimo_por_nivel = {}
+    for nivel, resultado in resultados_por_nivel.items():
+        cantidad_nivel = distribuccion_por_nivel.get(nivel, 0)
+        if cantidad_nivel > 0:
+            precio_minimo_nivel = resultado['Coste Total'] * (1 + margen_opcional if margen_opcional is not None else 1)
+            precio_minimo_por_nivel[nivel] = round(precio_minimo_nivel / cantidad_nivel, 2)
+        else:
+            precio_minimo_por_nivel[nivel] = 0
+
+
     # Depuración
     print("Check Names por nivel:", check_names_por_nivel)
     print("Depuración de resultados por nivel:", resultados_por_nivel)
@@ -124,8 +144,10 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
         'Coste de Compliance Total': round(coste_compliance, 2),
         'Coste Total': round(coste_total, 2),
         'Precio mínimo sugerido por proyecto': round(precio_minimo, 2),
-        'Precio mínimo por proveedor': round(precio_minimo_por_proveedor, 2)
+        'Precio mínimo por proveedor': round(precio_minimo_por_proveedor, 2),
+        'Precio mínimo por nivel': precio_minimo_por_nivel
     }
+
 
 
  
