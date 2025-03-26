@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from backend import calcular_precio_minimo_con_tercera_fuente  # Asegúrate de que el backend esté correctamente importado
+import io
 
 st.title("Cálculo de Precio Mínimo con Tercera Fuente")
 
@@ -50,7 +51,7 @@ if archivos_excel:
         distribuccion_por_nivel[nivel] = cantidad
 
     # Determinar si se requiere distribución por región
-    modelo_enriquecido = any([nivel in ["360", "180"] for nivel in niveles_detectados.keys()])
+    modelo_enriquecido = any([nivel in ["360", "180", "Digital"] for nivel in niveles_detectados.keys()])
 
     if modelo_enriquecido:
         st.subheader("Distribución por Región para Niveles Enriquecidos")
@@ -70,20 +71,63 @@ if archivos_excel:
 
     # Agregar un separador visual
     st.markdown("---")  # Este es el separador
-    # Botón para calcular el precio mínimo
-    if st.button("Calcular Precio Mínimo"):
-        # Llamar al backend con los datos procesados
+    try:
         resultado = calcular_precio_minimo_con_tercera_fuente(
             cantidad_proveedores=sum(distribuccion_por_nivel.values()),
             distribuccion_por_nivel=distribuccion_por_nivel,
             distribuccion_por_region=distribuccion_por_region,
             margen_opcional=margen_opcional,
-            check_names_por_nivel=check_names_por_nivel  # Pasar Check Names por nivel
+            check_names_por_nivel=check_names_por_nivel
         )
+        st.session_state.resultado = resultado
+    except ValueError as e:
+        st.error(str(e))
 
-        # Mostrar los resultados
+
+    # Mostrar resultados si existen
+    if 'resultado' in st.session_state:
+        resultado = st.session_state.resultado
+
         st.subheader("Resultado del cálculo")
-        for clave, valor in resultado.items():
-            st.write(f"{clave}: {valor}")
+
+        # Mostrar resultados por nivel
+        if 'Resultados por Nivel' in resultado:
+            st.markdown("### Detalle por Nivel")
+            df_resultados_nivel = pd.DataFrame.from_dict(resultado['Resultados por Nivel'], orient='index')
+            st.table(df_resultados_nivel)
+
+        # Mostrar precio mínimo por nivel
+        if 'Precio mínimo por nivel' in resultado:
+            st.markdown("### Precio mínimo por proveedor por nivel")
+            df_precio_nivel = pd.DataFrame.from_dict(resultado['Precio mínimo por nivel'], orient='index', columns=['Precio mínimo por proveedor (€)'])
+            st.table(df_precio_nivel)
+
+        # Mostrar resumen general
+        st.markdown("### Resumen General")
+        for clave in [
+            'Coste de Operaciones Total',
+            'Coste de Tercera Fuente Financiera Total',
+            'Coste de Compliance Total',
+            'Coste Total',
+            'Precio mínimo sugerido por proyecto',
+            'Precio mínimo por proveedor'
+        ]:
+            if clave in resultado:
+                st.write(f"**{clave}:** {resultado[clave]:,.2f} €")
+
+        # Botón de descarga
+        if st.button("📥 Descargar resultados en Excel", key="descargar_excel"):
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_resultados_nivel.to_excel(writer, sheet_name='Resultados por Nivel')
+                df_precio_nivel.to_excel(writer, sheet_name='Precio Mínimo por Nivel')
+            output.seek(0)
+
+            st.download_button(
+                label="Haz clic para descargar el archivo Excel",
+                data=output,
+                file_name="resultado_precio_minimo.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 
