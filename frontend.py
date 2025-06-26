@@ -1,132 +1,169 @@
 import streamlit as st
 import pandas as pd
-from backend import calcular_precio_minimo_con_tercera_fuente  # Asegúrate de que el backend esté correctamente importado
+from backend import calcular_precio_minimo_con_tercera_fuente
 import io
 
-st.title("Cálculo de Precio Mínimo con Tercera Fuente")
+# Selector de idioma
+idioma = st.radio("Seleccione el idioma / Select language", ["Español", "English"], index=0)
 
-# Permitir subir hasta 5 archivos
-archivos_excel = st.file_uploader("Sube hasta 5 archivos Excel con los servicios contratados", type=["xlsx"], accept_multiple_files=True)
+texts = {
+    "title": {"Español": "Cálculo de Coste con Tercera Fuente & Coste operacional", "English": "Cost Calculation with Third Party Source & Operational"},
+    "upload": {"Español": "Sube hasta 5 archivos Excel con los servicios contratados", "English": "Upload up to 5 Excel files with contracted services"},
+    "detected_levels": {"Español": "Niveles Detectados", "English": "Detected Levels"},
+    "levels_found": {"Español": "Se detectaron los siguientes niveles", "English": "The following levels were detected"},
+    "no_levels": {"Español": "No se detectaron niveles válidos en los archivos cargados.", "English": "No valid levels detected in uploaded files."},
+    "invalid_files": {"Español": "Los siguientes archivos no pudieron procesarse", "English": "The following files could not be processed"},
+    "num_suppliers": {"Español": "Cantidad de proveedores para el nivel", "English": "Number of suppliers for level"},
+    "region_dist": {"Español": "Distribución por Región para Niveles Enriquecidos", "English": "Regional Distribution for Enriched Levels"},
+    "percent_suppliers": {"Español": "Porcentaje de proveedores para", "English": "Percentage of suppliers for"},
+    "margin": {"Español": "Margen deseado (opcional, en porcentaje)", "English": "Desired profit margin (optional, %)"},
+    "results": {"Español": "Resultado del cálculo", "English": "Calculation Results"},
+    "detail_level": {"Español": "Detalle por Nivel", "English": "Level Details"},
+    "min_price_level": {"Español": "Precio mínimo por proveedor por nivel", "English": "Minimum Price per Supplier by Level"},
+    "summary": {"Español": "Resumen General", "English": "General Summary"},
+    "download_btn": {"Español": "📥 Descargar resultados en Excel", "English": "📥 Download results in Excel"},
+    "download_file": {"Español": "Haz clic para descargar el archivo Excel", "English": "Click to download the Excel file"},
+    "cost_operations": {"Español": "Coste de Operaciones Total", "English": "Total Operations Cost"},
+    "cost_third_party": {"Español": "Coste de Tercera Fuente Financiera Total", "English": "Total Third Party Financial Cost"},
+    "cost_compliance": {"Español": "Coste de Compliance Total", "English": "Total Compliance Cost"},
+    "cost_fixed": {"Español": "Coste Fijo Total", "English": "Total Fixed Cost"},
+    "fixed_detail": {"Español": "Detalle de Coste Fijo", "English": "Fixed Cost Detail"},
+    "setup": {"Español": "Setup", "English": "Setup"},
+    "license": {"Español": "Licencia", "English": "License"},
+    "integrations": {"Español": "Integraciones", "English": "Integrations"},
+    "total_cost": {"Español": "Coste Total", "English": "Total Cost"},
+    "min_price_project": {"Español": "Precio mínimo sugerido por proyecto", "English": "Suggested Minimum Price per Project"},
+    "min_price_variable": {"Español": "Precio mínimo por proveedor (solo variable)", "English": "Minimum Price per Supplier (variable part only)"},
+    "hub_selector": {"Español": "Seleccione el HUB", "English": "Select HUB"},
+    "region_sum_error": {"Español": "La suma de porcentajes por región debe ser exactamente 100%", "English": "The sum of region percentages must be exactly 100%"},
+    "client_selector": {"Español": "Seleccione el tipo de cliente", "English": "Select client type"},
+    "include_integrations": {"Español": "Incluir Integraciones (SAP, etc)", "English": "Include Integrations (SAP, etc)"}
+}
 
-if archivos_excel:
-    niveles_detectados = {}
-    check_names_por_nivel = {}  # Diccionario para almacenar los Check Names por nivel
-    archivos_invalidos = []
+st.title(texts["title"][idioma])
 
-    for archivo in archivos_excel:
+selected_hub = st.selectbox(texts["hub_selector"][idioma], ["UKI & MEA", "SEU", "USCAN", "NEU", "LATAM", "APAC"])
+selected_client = st.selectbox(texts["client_selector"][idioma], ["VIP High Spend", "High Growth Potential", "Medium Spend Medium Growth", "Medium Spend Low Growth", "Low Spend Low Growth"])
+include_integrations = st.checkbox(texts["include_integrations"][idioma])
+
+uploaded_files = st.file_uploader(texts["upload"][idioma], type=["xlsx"], accept_multiple_files=True)
+
+if uploaded_files:
+    detected_levels = {}
+    check_names_by_level = {}
+    invalid_files = []
+
+    for file in uploaded_files:
         try:
-            servicios_df = pd.read_excel(archivo, sheet_name=None, header=None)
-            hoja_info_general = servicios_df.get("Información General")
-            hoja_lista_servicios = servicios_df.get("Lista de Servicios")
+            services_df = pd.read_excel(file, sheet_name=None, header=None)
+            general_info = services_df.get("Información General")
+            services_list = services_df.get("Lista de Servicios")
 
-            # Detectar niveles desde "Información General"
-            if hoja_info_general is not None and len(hoja_info_general) > 4 and hoja_info_general.shape[1] > 1:
-                nivel = str(hoja_info_general.iloc[4, 1]).strip()  # Leer nivel desde la celda B5
-                if nivel in niveles_detectados:
-                    niveles_detectados[nivel] += 1
-                else:
-                    niveles_detectados[nivel] = 1
+            if general_info is not None and len(general_info) > 4 and general_info.shape[1] > 1:
+                level = str(general_info.iloc[4, 1]).strip()
+                detected_levels[level] = detected_levels.get(level, 0) + 1
 
-            # Detectar Check Names desde "Lista de Servicios"
-            if hoja_lista_servicios is not None:
-                columna_check_name = hoja_lista_servicios.iloc[:, 0]  # Asumir que la primera columna contiene los Check Names
-                check_names_por_nivel.setdefault(nivel, []).extend(columna_check_name.dropna().unique())
+            if services_list is not None:
+                check_column = services_list.iloc[:, 0]
+                check_names_by_level.setdefault(level, []).extend(check_column.dropna().unique())
         except Exception as e:
-            archivos_invalidos.append(archivo.name)
+            invalid_files.append(file.name)
 
-    # Mostrar los niveles detectados
-    st.subheader("Niveles Detectados")
-    if niveles_detectados:
-        st.write(f"Se detectaron los siguientes niveles: {', '.join(niveles_detectados.keys())}")
+    st.subheader(texts["detected_levels"][idioma])
+    if detected_levels:
+        st.write(f"{texts['levels_found'][idioma]}: {', '.join(detected_levels.keys())}")
     else:
-        st.error("No se detectaron niveles válidos en los archivos cargados.")
+        st.error(texts["no_levels"][idioma])
 
-    if archivos_invalidos:
-        st.warning(f"Los siguientes archivos no pudieron procesarse: {', '.join(archivos_invalidos)}")
+    if invalid_files:
+        st.warning(f"{texts['invalid_files'][idioma]}: {', '.join(invalid_files)}")
 
-    # Solicitar la cantidad de proveedores para cada nivel detectado
-    distribuccion_por_nivel = {}
-    for nivel in niveles_detectados.keys():
-        cantidad = st.number_input(f"Cantidad de proveedores para el nivel {nivel}", min_value=0, step=1, key=f"nivel_{nivel}")
-        distribuccion_por_nivel[nivel] = cantidad
+    supplier_distribution = {}
+    for level in detected_levels.keys():
+        count = st.number_input(f"{texts['num_suppliers'][idioma]} {level}", min_value=0, step=1, key=f"level_{level}")
+        supplier_distribution[level] = count
 
-    # Determinar si se requiere distribución por región
-    modelo_enriquecido = any([nivel in ["360", "180", "Digital"] for nivel in niveles_detectados.keys()])
+    enriched_model = any(level in ["360", "180", "Digital"] for level in detected_levels.keys())
+    region_distribution = {}
 
-    if modelo_enriquecido:
-        st.subheader("Distribución por Región para Niveles Enriquecidos")
-        distribuccion_por_region = {}
-        regiones = ["Europa", "Africa", "LATAM", "Asia", "Oceania", "Norte America", "Centro America", "Oriente Medio", "ROW", "Tarifa Plana"]
-        for region in regiones:
-            porcentaje = st.number_input(f"Porcentaje de proveedores para {region} (en %)", min_value=0.0, max_value=100.0, step=0.1, key=f"region_{region}")
-            distribuccion_por_region[region] = porcentaje
-    else:
-        distribuccion_por_region = None
+    if enriched_model:
+        st.subheader(texts["region_dist"][idioma])
+        regions = ["Europa", "Africa", "LATAM", "Asia", "Oceania", "Norte America", "Centro America", "Oriente Medio", "ROW", "Tarifa Plana"]
+        for region in regions:
+            percent = st.number_input(f"{texts['percent_suppliers'][idioma]} {region} (%)", min_value=0.0, max_value=100.0, step=0.1, key=f"region_{region}")
+            region_distribution[region] = percent
 
-        # Agregar un separador visual
-    st.markdown("---")  # Este es el separador  
+        total_percent = sum(region_distribution.values())
+        if abs(total_percent - 100) > 0.01:
+            st.error(texts["region_sum_error"][idioma])
+            region_distribution = None
 
-    # Ingresar el margen opcional
-    margen_opcional = st.number_input("Margen deseado (opcional, en porcentaje)", min_value=0.0, step=0.1) / 100
+    st.markdown("---")
+    optional_margin = st.number_input(texts["margin"][idioma], min_value=0.0, step=0.1) / 100
+    st.markdown("---")
 
-    # Agregar un separador visual
-    st.markdown("---")  # Este es el separador
-    try:
-        resultado = calcular_precio_minimo_con_tercera_fuente(
-            cantidad_proveedores=sum(distribuccion_por_nivel.values()),
-            distribuccion_por_nivel=distribuccion_por_nivel,
-            distribuccion_por_region=distribuccion_por_region,
-            margen_opcional=margen_opcional,
-            check_names_por_nivel=check_names_por_nivel
-        )
-        st.session_state.resultado = resultado
-    except ValueError as e:
-        st.error(str(e))
+    if sum(supplier_distribution.values()) > 0 and (region_distribution is not None or not enriched_model):
+        try:
+            result = calcular_precio_minimo_con_tercera_fuente(
+                cantidad_proveedores=sum(supplier_distribution.values()),
+                distribuccion_por_nivel=supplier_distribution,
+                distribuccion_por_region=region_distribution,
+                margen_opcional=optional_margin,
+                check_names_por_nivel=check_names_by_level,
+                tipo_cliente=selected_client,
+                incluye_integraciones=include_integrations
+            )
+            st.session_state.result = result
+        except ValueError as e:
+            st.error(str(e))
 
+    if 'result' in st.session_state:
+        result = st.session_state.result
+        st.subheader(texts["results"][idioma])
 
-    # Mostrar resultados si existen
-    if 'resultado' in st.session_state:
-        resultado = st.session_state.resultado
+        if 'Resultados por Nivel' in result:
+            df_level = pd.DataFrame.from_dict(result['Resultados por Nivel'], orient='index')
+            if not df_level.empty:
+                st.markdown(f"### {texts['detail_level'][idioma]}")
+                st.table(df_level)
 
-        st.subheader("Resultado del cálculo")
+        if 'Precio mínimo por nivel' in result:
+            df_price = pd.DataFrame.from_dict(result['Precio mínimo por nivel'], orient='index', columns=[texts['min_price_level'][idioma] + " (€)"])
+            if not df_price.empty:
+                st.markdown(f"### {texts['min_price_level'][idioma]}")
+                st.table(df_price)
 
-        # Mostrar resultados por nivel
-        if 'Resultados por Nivel' in resultado:
-            st.markdown("### Detalle por Nivel")
-            df_resultados_nivel = pd.DataFrame.from_dict(resultado['Resultados por Nivel'], orient='index')
-            st.table(df_resultados_nivel)
+        st.markdown(f"### {texts['summary'][idioma]}")
 
-        # Mostrar precio mínimo por nivel
-        if 'Precio mínimo por nivel' in resultado:
-            st.markdown("### Precio mínimo por proveedor por nivel")
-            df_precio_nivel = pd.DataFrame.from_dict(resultado['Precio mínimo por nivel'], orient='index', columns=['Precio mínimo por proveedor (€)'])
-            st.table(df_precio_nivel)
+        st.write(f"**{texts['cost_operations'][idioma]}:** {result.get('Coste de Operaciones Total', 0):,.2f} €")
+        st.write(f"**{texts['cost_third_party'][idioma]}:** {result.get('Coste de Tercera Fuente Financiera Total', 0):,.2f} €")
+        st.write(f"**{texts['cost_compliance'][idioma]}:** {result.get('Coste de Compliance Total', 0):,.2f} €")
+        st.write(f"**{texts['cost_fixed'][idioma]}:** {result.get('Coste Fijo Total', 0):,.2f} €")
+        st.write(f"**{texts['total_cost'][idioma]}:** {result.get('Coste Total', 0):,.2f} €")
+        st.write(f"**{texts['min_price_project'][idioma]}:** {result.get('Precio mínimo sugerido por proyecto', 0):,.2f} €")
+        st.write(f"**{texts['min_price_variable'][idioma]}:** {result.get('Precio mínimo por proveedor (solo variable)', 0):,.2f} €")
 
-        # Mostrar resumen general
-        st.markdown("### Resumen General")
-        for clave in [
-            'Coste de Operaciones Total',
-            'Coste de Tercera Fuente Financiera Total',
-            'Coste de Compliance Total',
-            'Coste Total',
-            'Precio mínimo sugerido por proyecto',
-            'Precio mínimo por proveedor'
-        ]:
-            if clave in resultado:
-                st.write(f"**{clave}:** {resultado[clave]:,.2f} €")
+        st.markdown(f"### {texts['fixed_detail'][idioma]}")
+        detalle = result.get('Detalle Coste Fijo', {})
+        st.write(f"**{texts['setup'][idioma]}:** {detalle.get('Setup', 0):,.2f} €")
+        st.write(f"**{texts['license'][idioma]}:** {detalle.get('Licencia', 0):,.2f} €")
+        st.write(f"**{texts['integrations'][idioma]}:** {detalle.get('Integraciones', 0):,.2f} €")
 
-        # Botón de descarga
-        if st.button("📥 Descargar resultados en Excel", key="descargar_excel"):
+        if st.button(texts["download_btn"][idioma], key="download_excel"):
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df_resultados_nivel.to_excel(writer, sheet_name='Resultados por Nivel')
-                df_precio_nivel.to_excel(writer, sheet_name='Precio Mínimo por Nivel')
+                if not df_level.empty:
+                    df_level.to_excel(writer, sheet_name='Level Details')
+                if not df_price.empty:
+                    df_price.to_excel(writer, sheet_name='Minimum Price by Level')
+                if 'DataFrame Coste Fijo' in result:
+                    result['DataFrame Coste Fijo'].to_excel(writer, sheet_name='Coste Fijo')
             output.seek(0)
 
             st.download_button(
-                label="Haz clic para descargar el archivo Excel",
+                label=texts["download_file"][idioma],
                 data=output,
-                file_name="resultado_precio_minimo.xlsx",
+                file_name="minimum_price_result.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
