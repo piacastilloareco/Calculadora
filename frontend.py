@@ -27,7 +27,7 @@ texts = {
     "cost_third_party": {"Español": "Coste de Tercera Fuente Financiera Total", "English": "Total Third Party Financial Cost"},
     "cost_compliance": {"Español": "Coste de Compliance Total", "English": "Total Compliance Cost"},
     "cost_fixed": {"Español": "Coste Fijo Total", "English": "Total Fixed Cost"},
-    "fixed_detail": {"Español": "Detalle de Precio Base Sugerido", "English": "Base Suggested Price Detail"},
+    "fixed_detail": {"Español": "Detalle de Coste Fijo", "English": "Fixed Cost Detail"},
     "setup": {"Español": "Setup", "English": "Setup"},
     "license": {"Español": "Licencia", "English": "License"},
     "integrations": {"Español": "Integraciones", "English": "Integrations"},
