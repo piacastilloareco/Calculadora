@@ -21,7 +21,7 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
     coste_por_proveedor_nivel = {"360": 25.97, "180": 11.41, "Basic": 2.32, "Elementary": 0.54, "Digital": 0.27}
     coste_por_region = {"Europa": 35.26, "Africa": 46.9, "LATAM": 51.64, "Asia": 69.99, "Oceania": 46, "Norte America": 30, "Centro America": 60.75, "Oriente Medio": 59.95, "ROW": 32.43, "Tarifa Plana": 0}
     check_names_fuente_compliance = {"Onlycompany", "Onlycompany + Politicas", "Stakeholders", "Stakeholders + Politicas", "Stakeholders + Peps y Sips", "Stakeholders + Politicas + Peps y Sips"}
-    check_names_enriquecimiento = {"Modelo Completo Enriquecido (Con Documento)", "Modelo Reducido Enriquecido (Con Documento)"}
+    check_names_enriquecimiento = {"Modelo Completo Enriquecido (Con Documento)", "Modelo Reducido Enriquecido (Con documento)"}
 
     resultados_por_nivel = {}
     coste_operaciones = 0
@@ -113,3 +113,4 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
 
 
  
+
