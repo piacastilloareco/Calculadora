@@ -19,9 +19,9 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
     coste_fijo = sum(coste_fijo_detalle.values())
 
     coste_por_proveedor_nivel = {"360": 25.97, "180": 11.41, "Basic": 2.32, "Elementary": 0.54, "Digital": 0.27}
-    coste_por_region = {"Europa": 35.26, "Africa": 46.9, "LATAM": 51.64, "Asia": 69.99, "Oceania": 46, "Norte America": 30, "Centro America": 60.75, "Oriente Medio": 59.95, "ROW": 32.43, "Tarifa Plana": 0}
+    coste_por_region = {"Europa (All Countries less ESP and PRT)": 35.26, "Africa": 46.9, "LATAM": 51.64, "Asia": 69.99, "Oceania": 46, "Norte America": 30, "Centro America": 60.75, "Oriente Medio": 59.95, "ROW": 32.43, "Tarifa Plana (ESP - PRT)": 0}
     check_names_fuente_compliance = {"Onlycompany", "Onlycompany + Politicas", "Stakeholders", "Stakeholders + Politicas", "Stakeholders + Peps y Sips", "Stakeholders + Politicas + Peps y Sips"}
-    check_names_enriquecimiento = {"Modelo Completo Enriquecido (Con Documento)", "Modelo Reducido Enriquecido (Con documento)"}
+    check_names_enriquecimiento = {"Modelo Completo Enriquecido (Con Documento)", "Modelo Reducido Enriquecido (Con Documento)"}
 
     resultados_por_nivel = {}
     coste_operaciones = 0
@@ -51,22 +51,43 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
             }
 
     # Segundo loop: compliance total y distribución proporcional
-    compliance_por_nivel = {}
-    total_proveedores_compliance = 0
+    # Mapeo de cantidad promedio de consultas por tipo de formulario
+    consultas_promedio = {
+        "Onlycompany": 1,
+        "Onlycompany + Politicas": 1,
+        "Stakeholders": 3,
+        "Stakeholders + Politicas": 3,
+        "Stakeholders + Peps y Sips": 6,
+        "Stakeholders + Politicas + Peps y Sips": 6,
+    }
 
+    # Inicializamos estructuras
+    consultas_por_nivel = {}
+    compliance_por_nivel = {}
+    total_consultas = 0
+
+    # Cálculo del total de consultas por nivel
     for nivel, cantidad in distribuccion_por_nivel.items():
-        if cantidad > 0 and check_names_por_nivel and nivel in check_names_por_nivel and any(chk in check_names_fuente_compliance for chk in check_names_por_nivel[nivel]):
-            compliance_por_nivel[nivel] = cantidad * 5
-            total_proveedores_compliance += cantidad
+        if cantidad > 0 and check_names_por_nivel and nivel in check_names_por_nivel:
+            consultas_nivel = 0
+            for formulario in check_names_por_nivel[nivel]:
+                consultas_nivel += consultas_promedio.get(formulario, 0)
+            total_consultas_nivel = consultas_nivel * cantidad
+            consultas_por_nivel[nivel] = total_consultas_nivel
+            total_consultas += total_consultas_nivel
+        else:
+            consultas_por_nivel[nivel] = 0  # Nivel sin formularios de compliance
+
+    # Cálculo del coste total de compliance con la nueva fórmula
+    coste_compliance = round(1661.9 * (total_consultas ** -0.738), 2) if total_consultas > 0 else 0
+
+    # Asignación del coste solo a niveles con consultas
+    for nivel, consultas_nivel in consultas_por_nivel.items():
+        if consultas_nivel > 0:
+            compliance_por_nivel[nivel] = round(coste_compliance * (consultas_nivel / total_consultas), 2)
         else:
             compliance_por_nivel[nivel] = 0
 
-    coste_compliance = sum(compliance_por_nivel.values())
-    if coste_compliance < 5000 and total_proveedores_compliance > 0:
-        for nivel in compliance_por_nivel:
-            if compliance_por_nivel[nivel] > 0:
-                compliance_por_nivel[nivel] = round(5000 * (distribuccion_por_nivel[nivel] / total_proveedores_compliance), 2)
-        coste_compliance = 5000
 
     # Actualización de resultados finales
     for nivel in resultados_por_nivel:
@@ -113,4 +134,5 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
 
 
  
+
 
