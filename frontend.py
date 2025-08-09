@@ -1,7 +1,14 @@
 import streamlit as st
+import unicodedata
 import pandas as pd
 from backend import calcular_precio_minimo_con_tercera_fuente
 import io
+
+# Función para limpiar el texto que pueda causar errores de codificación
+def clean_text(text):
+    if isinstance(text, str):
+        return unicodedata.normalize("NFKD", text).encode("utf-8", "ignore").decode("utf-8")
+    return text
 
 # Selector de idioma
 idioma = st.radio("Seleccione el idioma / Select language", ["Español", "English"], index=0)
@@ -16,12 +23,12 @@ texts = {
     "num_suppliers": {"Español": "Cantidad de proveedores para el nivel", "English": "Number of suppliers for level"},
     "region_dist": {"Español": "Distribución por Región para Niveles Enriquecidos", "English": "Regional Distribution for Enriched Levels"},
     "percent_suppliers": {"Español": "Porcentaje de proveedores para", "English": "Percentage of suppliers for"},
-    "margin": {"Español": "Margen deseado (opcional, en porcentaje)", "English": "Desired profit margin (optional, %)"},
+    "margin": {"Español": "Margen deseado (opcional, en porcentaje). Se sugiere un 70 %", "English": "Desired profit margin (optional, %).70% is suggested."},
     "results": {"Español": "Resultado del cálculo", "English": "Calculation Results"},
     "detail_level": {"Español": "Detalle por Nivel", "English": "Level Details"},
     "min_price_level": {"Español": "Precio mínimo por proveedor por nivel", "English": "Minimum Price per Supplier by Level"},
     "summary": {"Español": "Resumen General", "English": "General Summary"},
-    "download_btn": {"Español": "📥 Descargar resultados en Excel", "English": "📥 Download results in Excel"},
+    "download_btn": {"Español": "\ud83d\udcc5 Descargar resultados en Excel", "English": "\ud83d\udcc5 Download results in Excel"},
     "download_file": {"Español": "Haz clic para descargar el archivo Excel", "English": "Click to download the Excel file"},
     "cost_operations": {"Español": "Coste de Operaciones Total", "English": "Total Operations Cost"},
     "cost_third_party": {"Español": "Coste de Tercera Fuente Financiera Total", "English": "Total Third Party Financial Cost"},
@@ -88,7 +95,7 @@ if uploaded_files:
 
     if enriched_model:
         st.subheader(texts["region_dist"][idioma])
-        regions = ["Europa", "Africa", "LATAM", "Asia", "Oceania", "Norte America", "Centro America", "Oriente Medio", "ROW", "Tarifa Plana"]
+        regions = [ "Tarifa Plana (ESP - PRT)","Europa (All Countries less ESP and PRT)", "Africa", "LATAM", "Asia", "Oceania", "Norte America", "Centro America", "Oriente Medio", "ROW"]
         for region in regions:
             percent = st.number_input(f"{texts['percent_suppliers'][idioma]} {region} (%)", min_value=0.0, max_value=100.0, step=0.1, key=f"region_{region}")
             region_distribution[region] = percent
@@ -127,6 +134,17 @@ if uploaded_files:
                 st.markdown(f"### {texts['detail_level'][idioma]}")
                 st.table(df_level)
 
+        compliance_data = {
+            nivel: datos.get("Coste de Compliance", 0)
+            for nivel, datos in result["Resultados por Nivel"].items()
+            if datos.get("Coste de Compliance", 0) > 0
+        }
+
+        if compliance_data:
+            df_compliance = pd.DataFrame.from_dict(compliance_data, orient='index', columns=["Coste de Compliance (€)"])
+            st.markdown("#### Niveles con coste de Compliance aplicado")
+            st.table(df_compliance)
+
         if 'Precio mínimo por nivel' in result:
             df_price = pd.DataFrame.from_dict(result['Precio mínimo por nivel'], orient='index', columns=[texts['min_price_level'][idioma] + " (€)"])
             if not df_price.empty:
@@ -149,22 +167,25 @@ if uploaded_files:
         st.write(f"**{texts['license'][idioma]}:** {detalle.get('Licencia', 0):,.2f} €")
         st.write(f"**{texts['integrations'][idioma]}:** {detalle.get('Integraciones', 0):,.2f} €")
 
-        if st.button(texts["download_btn"][idioma], key="download_excel"):
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                if not df_level.empty:
-                    df_level.to_excel(writer, sheet_name='Level Details')
-                if not df_price.empty:
-                    df_price.to_excel(writer, sheet_name='Minimum Price by Level')
-                if 'DataFrame Coste Fijo' in result:
-                    result['DataFrame Coste Fijo'].to_excel(writer, sheet_name='Coste Fijo')
-            output.seek(0)
+    download_text = clean_text(texts["download_btn"][idioma])
+    if st.button(download_text, key="download_excel"):
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            if not df_level.empty:
+                df_level.to_excel(writer, sheet_name='Level Details')
+            if not df_price.empty:
+                df_price.to_excel(writer, sheet_name='Minimum Price by Level')
+            if 'DataFrame Coste Fijo' in result:
+                result['DataFrame Coste Fijo'].to_excel(writer, sheet_name='Coste Fijo')
+        output.seek(0)
 
-            st.download_button(
-                label=texts["download_file"][idioma],
-                data=output,
-                file_name="minimum_price_result.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+        st.download_button(
+            label=clean_text(texts["download_file"][idioma]),
+            data=output,
+            file_name="minimum_price_result.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+
 
 
