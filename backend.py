@@ -1,7 +1,15 @@
 import pandas as pd
 
-def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccion_por_nivel, distribuccion_por_region=None, margen_opcional=None, check_names_por_nivel=None, tipo_cliente=None, incluye_integraciones=False):
-    
+def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccion_por_nivel,
+                                              distribuccion_por_region=None, margen_opcional=None,
+                                              check_names_por_nivel=None, tipo_cliente=None,
+                                              incluye_integraciones=False):
+
+    # Validación margen (margen sobre venta, no markup)
+    if margen_opcional is not None:
+        if not (0 <= margen_opcional < 1):
+            raise ValueError("margen_opcional debe estar entre 0 y 1 (ej. 0.4 = 40%).")
+
     costes_fijos_clientes = {
         "VIP High Spend": {"Setup": 9500, "Licencia": 29000, "Integraciones": 15000},
         "High Growth Potential": {"Setup": 9500, "Licencia": 25000, "Integraciones": 15000},
@@ -19,21 +27,27 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
     coste_fijo = sum(coste_fijo_detalle.values())
 
     coste_por_proveedor_nivel = {"360": 25.97, "180": 11.41, "Basic": 2.32, "Elementary": 0.54, "Digital": 0.27}
-    coste_por_region = {"Europa (All Countries less ESP and PRT)": 35.26, "Africa": 46.9, "LATAM": 51.64, "Asia": 69.99, "Oceania": 46, "Norte America": 30, "Centro America": 60.75, "Oriente Medio": 59.95, "ROW": 32.43, "Tarifa Plana (ESP - PRT)": 0}
-    check_names_fuente_compliance = {"Onlycompany", "Onlycompany + Politicas", "Stakeholders", "Stakeholders + Politicas", "Stakeholders + Peps y Sips", "Stakeholders + Politicas + Peps y Sips"}
-    check_names_enriquecimiento = {"Modelo Completo Enriquecido (Con Documento)", "Modelo Reducido Enriquecido (Con Documento)"}
+    coste_por_region = {"Europa (All Countries less ESP and PRT)": 35.26, "Africa": 46.9, "LATAM": 51.64,
+                        "Asia": 69.99, "Oceania": 46, "Norte America": 30, "Centro America": 60.75,
+                        "Oriente Medio": 59.95, "ROW": 32.43, "Tarifa Plana (ESP - PRT)": 0}
+    check_names_enriquecimiento = {
+        "Modelo Completo Enriquecido (Con Documento)",
+        "Modelo Reducido Enriquecido (Con Documento)"
+    }
 
     resultados_por_nivel = {}
     coste_operaciones = 0
     coste_tercera_fuente = 0
 
-    # Primer loop: operaciones y tercera fuente
     for nivel, cantidad in distribuccion_por_nivel.items():
         if cantidad > 0:
             coste_op = coste_por_proveedor_nivel.get(nivel, 0) * cantidad
             coste_operaciones += coste_op
 
-            tiene_enriquecimiento = check_names_por_nivel and nivel in check_names_por_nivel and any(chk in check_names_enriquecimiento for chk in check_names_por_nivel[nivel])
+            tiene_enriquecimiento = (
+                check_names_por_nivel and nivel in check_names_por_nivel
+                and any(chk in check_names_enriquecimiento for chk in check_names_por_nivel[nivel])
+            )
             coste_tf = 0
             if distribuccion_por_region and tiene_enriquecimiento:
                 if sum(distribuccion_por_region.values()) > 100:
@@ -46,13 +60,21 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
             resultados_por_nivel[nivel] = {
                 "Coste de Operaciones": round(coste_op, 2),
                 "Coste de Tercera Fuente": round(coste_tf, 2),
-                "Coste de Compliance": 0,  # se completa después
+                "Coste de Compliance": 0,
                 "Coste Total": 0
             }
 
-    # Segundo loop: compliance total y distribución proporcional
-    # Mapeo de cantidad promedio de consultas por tipo de formulario
-    consultas_promedio = {
+    # --- Compliance (lógica Excel) ---
+    avg_llamadas_por_tipo = {
+        "Onlycompany": 1,
+        "Onlycompany + Politicas": 1,
+        "Stakeholders": 1,
+        "Stakeholders + Politicas": 1,
+        "Stakeholders + Peps y Sips": 6,
+        "Stakeholders + Politicas + Peps y Sips": 6,
+    }
+
+    factor_precio_por_tipo = {
         "Onlycompany": 1,
         "Onlycompany + Politicas": 1,
         "Stakeholders": 3,
@@ -61,56 +83,57 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
         "Stakeholders + Politicas + Peps y Sips": 6,
     }
 
-    # Inicializamos estructuras
-    consultas_por_nivel = {}
-    compliance_por_nivel = {}
-    total_consultas = 0
+    proveedores_por_tipo = {}
+    tipo_elegido_por_nivel = {}
 
-    # Cálculo del total de consultas por nivel
     for nivel, cantidad in distribuccion_por_nivel.items():
-        if cantidad > 0 and check_names_por_nivel and nivel in check_names_por_nivel:
-            consultas_nivel = 0
-            for formulario in check_names_por_nivel[nivel]:
-                consultas_nivel += consultas_promedio.get(formulario, 0)
-            total_consultas_nivel = consultas_nivel * cantidad
-            consultas_por_nivel[nivel] = total_consultas_nivel
-            total_consultas += total_consultas_nivel
-        else:
-            consultas_por_nivel[nivel] = 0  # Nivel sin formularios de compliance
+        if cantidad <= 0:
+            continue
+        feats = (check_names_por_nivel or {}).get(nivel, [])
+        feats_validas = [f for f in feats if f in avg_llamadas_por_tipo]
+        tipo = max(feats_validas, key=lambda f: factor_precio_por_tipo[f]) if feats_validas else None
+        tipo_elegido_por_nivel[nivel] = tipo
+        if tipo:
+            proveedores_por_tipo[tipo] = proveedores_por_tipo.get(tipo, 0) + cantidad
 
-    # Cálculo del coste total de compliance con la nueva fórmula
-    coste_compliance = round(1661.9 * (total_consultas ** -0.738), 2) if total_consultas > 0 else 0
+    llamadas_totales = sum(cant * avg_llamadas_por_tipo[t] for t, cant in proveedores_por_tipo.items())
+    coste_por_llamada = round(1661.9 * (llamadas_totales ** -0.738), 8) if llamadas_totales > 0 else 0.0
+    precio_unitario_por_tipo = {t: round(factor_precio_por_tipo[t] * coste_por_llamada, 2) for t in proveedores_por_tipo}
+    coste_por_tipo = {t: round(precio_unitario_por_tipo[t] * proveedores_por_tipo[t], 2) for t in proveedores_por_tipo}
+    coste_compliance = round(sum(coste_por_tipo.values()), 2)
 
-    # Asignación del coste solo a niveles con consultas
-    for nivel, consultas_nivel in consultas_por_nivel.items():
-        if consultas_nivel > 0:
-            compliance_por_nivel[nivel] = round(coste_compliance * (consultas_nivel / total_consultas), 2)
-        else:
-            compliance_por_nivel[nivel] = 0
-
-
-    # Actualización de resultados finales
     for nivel in resultados_por_nivel:
-        compliance_nivel = compliance_por_nivel.get(nivel, 0)
+        cantidad_nivel = distribuccion_por_nivel.get(nivel, 0)
+        tipo = tipo_elegido_por_nivel.get(nivel)
+        compliance_nivel = round((precio_unitario_por_tipo.get(tipo, 0) * cantidad_nivel), 2) if cantidad_nivel > 0 else 0
+
         total_nivel = (
-            resultados_por_nivel[nivel]["Coste de Operaciones"] +
-            resultados_por_nivel[nivel]["Coste de Tercera Fuente"] +
-            compliance_nivel
+            resultados_por_nivel[nivel]["Coste de Operaciones"]
+            + resultados_por_nivel[nivel]["Coste de Tercera Fuente"]
+            + compliance_nivel
         )
-        resultados_por_nivel[nivel]["Coste de Compliance"] = round(compliance_nivel, 2)
+        resultados_por_nivel[nivel]["Coste de Compliance"] = compliance_nivel
         resultados_por_nivel[nivel]["Coste Total"] = round(total_nivel, 2)
 
-    coste_total = coste_operaciones + coste_tercera_fuente + coste_compliance + coste_fijo
-    precio_minimo = coste_total * (1 + margen_opcional) if margen_opcional is not None else coste_total
-
     coste_total_sin_fijo = coste_operaciones + coste_tercera_fuente + coste_compliance
-    precio_minimo_por_proveedor = (coste_total_sin_fijo * (1 + margen_opcional) if margen_opcional is not None else coste_total_sin_fijo) / cantidad_proveedores if cantidad_proveedores > 0 else 0
+    coste_total = coste_total_sin_fijo + coste_fijo
+
+    if margen_opcional is not None:
+        precio_minimo = coste_total / (1 - margen_opcional)
+    else:
+        precio_minimo = coste_total
+
+    if margen_opcional is not None:
+        precio_minimo_por_proveedor = coste_total_sin_fijo / (1 - margen_opcional)
+    else:
+        precio_minimo_por_proveedor = coste_total_sin_fijo
+    precio_minimo_por_proveedor = (precio_minimo_por_proveedor / cantidad_proveedores) if cantidad_proveedores > 0 else 0
 
     precio_minimo_por_nivel = {}
     for nivel, resultado in resultados_por_nivel.items():
         cantidad_nivel = distribuccion_por_nivel.get(nivel, 0)
         if cantidad_nivel > 0:
-            precio_nivel = resultado["Coste Total"] * (1 + margen_opcional) if margen_opcional is not None else resultado["Coste Total"]
+            precio_nivel = (resultado["Coste Total"] / (1 - margen_opcional)) if margen_opcional is not None else resultado["Coste Total"]
             precio_minimo_por_nivel[nivel] = round(precio_nivel / cantidad_nivel, 2)
 
     df_coste_fijo = pd.DataFrame.from_dict(coste_fijo_detalle, orient="index", columns=["Coste (€)"])
@@ -131,8 +154,7 @@ def calcular_precio_minimo_con_tercera_fuente(cantidad_proveedores, distribuccio
 
 
 
-
-
  
+
 
 
