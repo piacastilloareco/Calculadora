@@ -25,7 +25,7 @@ texts = {
     "percent_suppliers": {"Español": "Porcentaje de proveedores para", "English": "Percentage of suppliers for"},
     "margin": {"Español": "Margen deseado (opcional, en porcentaje). Se sugiere un 70 %", "English": "Desired profit margin (optional, %).70% is suggested."},
     "results": {"Español": "Resultado del cálculo", "English": "Calculation Results"},
-    "detail_level": {"Español": "Detalle por Nivel", "English": "Level Details"},
+    "detail_level": {"Español": "Detalle por Nivel(Coste)", "English": "Level Details (Cost)"},
     "min_price_level": {"Español": "Precio mínimo por proveedor por nivel", "English": "Minimum Price per Supplier by Level"},
     "summary": {"Español": "Resumen General", "English": "General Summary"},
     "download_btn": {"Español": "\ud83d\udcc5 Descargar resultados en Excel", "English": "\ud83d\udcc5 Download results in Excel"},
@@ -33,13 +33,12 @@ texts = {
     "cost_operations": {"Español": "Coste de Operaciones Total", "English": "Total Operations Cost"},
     "cost_third_party": {"Español": "Coste de Tercera Fuente Financiera Total", "English": "Total Third Party Financial Cost"},
     "cost_compliance": {"Español": "Coste de Compliance Total", "English": "Total Compliance Cost"},
-    "cost_fixed": {"Español": "Coste Fijo Total", "English": "Total Fixed Cost"},
-    "fixed_detail": {"Español": "Detalle de Coste Fijo", "English": "Fixed Cost Detail"},
+    "cost_fixed": {"Español": "Precio Fijo Total", "English": "Total Fixed Price"},
+    "fixed_detail": {"Español": "Detalle de Precio Fijo", "English": "Fixed Price Detail"},
     "setup": {"Español": "Setup", "English": "Setup"},
     "license": {"Español": "Licencia", "English": "License"},
     "integrations": {"Español": "Integraciones", "English": "Integrations"},
-    "total_cost": {"Español": "Coste Total", "English": "Total Cost"},
-    "min_price_project": {"Español": "Precio mínimo sugerido por proyecto", "English": "Suggested Minimum Price per Project"},
+    "total_cost": {"Español": "Precio Total", "English": "Total Price"},
     "min_price_variable": {"Español": "Precio mínimo por proveedor (solo variable)", "English": "Minimum Price per Supplier (variable part only)"},
     "hub_selector": {"Español": "Seleccione el HUB", "English": "Select HUB"},
     "region_sum_error": {"Español": "La suma de porcentajes por región debe ser exactamente 100%", "English": "The sum of region percentages must be exactly 100%"},
@@ -105,9 +104,16 @@ if uploaded_files:
             st.error(texts["region_sum_error"][idioma])
             region_distribution = None
 
+
     st.markdown("---")
     optional_margin = st.number_input(texts["margin"][idioma], min_value=0.0, step=0.1) / 100
+
+    if optional_margin == 0:
+        st.info("⚠️ Estás calculando SIN margen" if idioma == "Español" else "⚠️ You are calculating WITHOUT margin")
+
     st.markdown("---")
+
+
 
     if sum(supplier_distribution.values()) > 0 and (region_distribution is not None or not enriched_model):
         try:
@@ -145,11 +151,21 @@ if uploaded_files:
             st.markdown("#### Niveles con coste de Compliance aplicado")
             st.table(df_compliance)
 
+        st.markdown("---")
+
         if 'Precio mínimo por nivel' in result:
             df_price = pd.DataFrame.from_dict(result['Precio mínimo por nivel'], orient='index', columns=[texts['min_price_level'][idioma] + " (€)"])
             if not df_price.empty:
                 st.markdown(f"### {texts['min_price_level'][idioma]}")
                 st.table(df_price)
+
+        st.markdown(f"### {texts['fixed_detail'][idioma]}")
+        detalle = result.get('Detalle Coste Fijo', {})
+        st.write(f"**{texts['setup'][idioma]}:** {detalle.get('Setup', 0):,.2f} €")
+        st.write(f"**{texts['license'][idioma]}:** {detalle.get('Licencia', 0):,.2f} €")
+        st.write(f"**{texts['integrations'][idioma]}:** {detalle.get('Integraciones', 0):,.2f} €")
+
+        st.markdown("---")
 
         st.markdown(f"### {texts['summary'][idioma]}")
 
@@ -157,15 +173,9 @@ if uploaded_files:
         st.write(f"**{texts['cost_third_party'][idioma]}:** {result.get('Coste de Tercera Fuente Financiera Total', 0):,.2f} €")
         st.write(f"**{texts['cost_compliance'][idioma]}:** {result.get('Coste de Compliance Total', 0):,.2f} €")
         st.write(f"**{texts['cost_fixed'][idioma]}:** {result.get('Coste Fijo Total', 0):,.2f} €")
-        st.write(f"**{texts['total_cost'][idioma]}:** {result.get('Coste Total', 0):,.2f} €")
-        st.write(f"**{texts['min_price_project'][idioma]}:** {result.get('Precio mínimo sugerido por proyecto', 0):,.2f} €")
         st.write(f"**{texts['min_price_variable'][idioma]}:** {result.get('Precio mínimo por proveedor (solo variable)', 0):,.2f} €")
+        st.write(f"**{texts['total_cost'][idioma]}:** {result.get('Coste Total', 0):,.2f} €")
 
-        st.markdown(f"### {texts['fixed_detail'][idioma]}")
-        detalle = result.get('Detalle Coste Fijo', {})
-        st.write(f"**{texts['setup'][idioma]}:** {detalle.get('Setup', 0):,.2f} €")
-        st.write(f"**{texts['license'][idioma]}:** {detalle.get('Licencia', 0):,.2f} €")
-        st.write(f"**{texts['integrations'][idioma]}:** {detalle.get('Integraciones', 0):,.2f} €")
 
     download_text = clean_text(texts["download_btn"][idioma])
     if st.button(download_text, key="download_excel"):
@@ -174,7 +184,7 @@ if uploaded_files:
             if not df_level.empty:
                 df_level.to_excel(writer, sheet_name='Level Details')
             if not df_price.empty:
-                df_price.to_excel(writer, sheet_name='Minimum Price by Level')
+                df_price.to_excel(writer, sheet_name='Price by Level')
             if 'DataFrame Coste Fijo' in result:
                 result['DataFrame Coste Fijo'].to_excel(writer, sheet_name='Coste Fijo')
         output.seek(0)
@@ -185,6 +195,9 @@ if uploaded_files:
             file_name="minimum_price_result.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
+
+
 
 
 
